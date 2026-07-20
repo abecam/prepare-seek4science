@@ -1,0 +1,101 @@
+---
+# create_seek_admin.yml
+#
+# Fetches a `rails runner` script from a GitHub repo and executes it
+# inside a running SEEK Docker container, without writing the script to
+# disk and without ever putting the admin password on a command line or
+# in a log.
+#
+# Requirements:
+#   - The target host can reach GitHub and has the `docker` CLI
+#     available for the SEEK container (this play assumes it runs on
+#     the same host as the container - adjust `delegate_to` if not).
+#   - Store the admin password in an Ansible Vault-encrypted var; never
+#     put it in plaintext in this file or in the fetched .rb script.
+#
+# Usage:
+#   ansible-playbook -i inventory.yml create_seek_admin.yml \
+#     --ask-vault-pass \
+#     -e seek_admin_password='ChangeMe123!'
+#
+#   (better: keep seek_admin_password in an ansible-vault encrypted
+#    group_vars/host_vars file instead of passing it on the CLI)
+
+- name: Create initial SEEK admin user via rails runner
+  hosts: seek_hosts
+  gather_facts: false
+
+  vars:
+    seek_container_name: "seek"
+    seek_script_raw_url: "https://raw.githubusercontent.com/yourorg/seek-admin-scripts/main/create_admin.rb"
+
+    seek_admin_login: "denbi"
+    seek_admin_email: "admin@example.org"
+    seek_admin_first_name: "Admin"
+    seek_admin_last_name: "Example"
+    # seek_admin_password: set via --ask-vault-pass / vaulted vars file, not here
+
+  tasks:
+    - name: Confirm the SEEK container is running
+      ansible.builtin.command:
+        cmd: "docker inspect -f {% raw %}'{{.State.Running}}'{% endraw %} {{ seek_container_name }}"
+      register: seek_container_state
+      changed_when: false
+
+    - name: Fail early if the SEEK container isn't running
+      ansible.builtin.fail:
+        msg: "Container '{{ seek_container_name }}' is not running (state: {{ seek_container_state.stdout | trim }})"
+      when: seek_container_state.stdout | trim != "true"
+
+    - name: Fetch create_admin.rb from GitHub
+      ansible.builtin.uri:
+        url: "{{ seek_script_raw_url }}"
+        return_content: true
+        status_code: 200
+      register: seek_admin_script
+
+    - name: Run the script inside the container, cleaning up secrets afterwards
+      block:
+        - name: Create a secure temp file for the env vars
+          ansible.builtin.tempfile:
+            state: file
+            suffix: seek-admin-env
+          register: seek_env_file
+
+        - name: Write ENV vars (incl. password) to the temp file, 0600 perms
+          ansible.builtin.copy:
+            dest: "{{ seek_env_file.path }}"
+            mode: "0600"
+            content: |
+              SEEK_ADMIN_LOGIN={{ seek_admin_login }}
+              SEEK_ADMIN_EMAIL={{ seek_admin_email }}
+              SEEK_ADMIN_FIRST_NAME={{ seek_admin_first_name }}
+              SEEK_ADMIN_LAST_NAME={{ seek_admin_last_name }}
+              SEEK_ADMIN_PASSWORD={{ seek_admin_password }}
+          no_log: true   # this task's content/diff would contain the password
+
+        - name: Run create_admin.rb via rails runner (script piped over stdin)
+          ansible.builtin.command:
+            cmd: >-
+              docker exec -i
+              --env-file {{ seek_env_file.path }}
+              {{ seek_container_name }} bin/rails runner -
+            stdin: "{{ seek_admin_script.content }}"
+          register: seek_admin_result
+          changed_when: "'Created user' in seek_admin_result.stdout"
+          failed_when: >-
+            seek_admin_result.rc != 0 or
+            'FAILED' in seek_admin_result.stdout
+          # no secrets appear in this task's cmd or output, so no no_log needed
+          # -> the debug task below can safely show what happened
+
+        - name: Show script output
+          ansible.builtin.debug:
+            msg: "{{ seek_admin_result.stdout_lines }}"
+
+      always:
+        - name: Remove the temp env file
+          ansible.builtin.file:
+            path: "{{ seek_env_file.path }}"
+            state: absent
+          when: seek_env_file is defined and seek_env_file.path is defined

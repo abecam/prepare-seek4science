@@ -1,0 +1,11 @@
+{
+  "SOURCE_BASE_URL": "https://fairdomhub.org",
+  "SOURCE_AUTH": null,
+  "DEST_BASE_URL": "http://localhost:3000/",
+  "DEST_AUTH": ["Alain", "vRS8\"jsDAk6B*mv"],
+  "DEST_HEADERS_EXTRA": {},
+  "INVESTIGATION_ID": 658,
+  "DEST_PROJECT_ID": 1,
+  "DRY_RUN": false,
+  "DOWNLOAD_DIR": "./_seek_migration_blobs"
+}
