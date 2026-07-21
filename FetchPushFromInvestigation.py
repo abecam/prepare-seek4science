@@ -93,6 +93,7 @@ def load_config():
             if key in {"SOURCE_AUTH", "DEST_AUTH"} and isinstance(value, list):
                 value = tuple(value)
             config[key] = value
+            print(f"Config {key} : {value}")
 
     return config
 

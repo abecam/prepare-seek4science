@@ -1,0 +1,95 @@
+version: '3'
+services:
+  db: # Database implementation, in this case MySQL
+    image: mysql:5.7
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    restart: always
+    stop_grace_period: 1m30s
+    environment:
+      MYSQL_HOST: db
+      MYSQL_ROOT_PASSWORD: seek_root
+      MYSQL_DATABASE: seek_docker
+      MYSQL_USER: seek_db_user
+      MYSQL_PASSWORD: seek_db_password
+    volumes:
+      - seek-mysql-db:/var/lib/mysql
+    ports:
+      - "2880:2880"
+
+  seek: # The SEEK application
+    #build: .
+
+    image: fairdom/seek:1.18
+
+    command: docker/entrypoint.sh
+    restart: always
+    environment:
+      RAILS_ENV: production
+      SOLR_PORT: 8983
+      SOLR_HOST: solr
+      NO_ENTRYPOINT_WORKERS: 1
+      MYSQL_HOST: db
+      MYSQL_ROOT_PASSWORD: seek_root
+      MYSQL_DATABASE: seek_docker
+      MYSQL_USER: seek_db_user
+      MYSQL_PASSWORD: seek_db_password
+    volumes:
+      - seek-filestore:/seek/filestore
+      - seek-cache:/seek/tmp/cache
+    ports:
+      - "3053:3000"
+    depends_on:
+      - db
+      - solr
+    links:
+      - db
+      - solr
+
+  seek_workers: # The SEEK delayed job workers
+      #build: .
+
+      image: fairdom/seek:1.18
+      command: docker/start_workers.sh
+      restart: always
+      environment:
+        RAILS_ENV: production
+        SOLR_PORT: 8983
+        SOLR_HOST: solr
+        MYSQL_HOST: db
+        MYSQL_ROOT_PASSWORD: seek_root
+        MYSQL_DATABASE: seek_docker
+        MYSQL_USER: seek_db_user
+        MYSQL_PASSWORD: seek_db_password
+      volumes:
+        - seek-filestore:/seek/filestore
+        - seek-cache:/seek/tmp/cache
+      depends_on:
+        - db
+        - solr
+      links:
+        - db
+        - solr
+      ports:
+        - "2890:2890"
+
+  solr:
+    image: fairdom/seek-solr:8.11
+    restart: always
+    environment:
+      SOLR_JAVA_MEM: -Xms512m -Xmx1024m
+    volumes:
+      - seek-solr-data:/var/solr/
+    entrypoint:
+      - docker-entrypoint.sh
+      - solr-precreate
+      - seek
+      - /opt/solr/server/solr/configsets/seek_config
+    ports:
+      - "2900:2900"      
+
+
+volumes:
+  seek-filestore:
+  seek-mysql-db:
+  seek-solr-data:
+  seek-cache:
