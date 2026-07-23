@@ -13,7 +13,7 @@
 
 person = Person.create!(
   first_name: "Admin",
-  last_name:  "Example",
+  last_name:  "Denbi",
   email:      "admin@example.org"
 )
 
@@ -30,7 +30,7 @@ user.save!
 # Making them a SEEK-wide admin is normally done via the roles system
 # rather than a plain boolean column - check Person#is_admin= /
 # app/models/role.rb in your version before trusting this line:
-person.is_admin = true if person.respond_to?(:is_admin=)
-person.save!
+#person.is_admin = true if person.respond_to?(:is_admin=)
+#person.save!
 
 puts "Created user '#{user.login}' (person ##{person.id}), admin=#{person.respond_to?(:is_admin?) ? person.is_admin? : 'unknown'}"

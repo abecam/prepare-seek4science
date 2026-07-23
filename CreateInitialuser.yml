@@ -27,7 +27,7 @@
 
   vars:
     seek_container_name: "seek"
-    seek_script_raw_url: "https://raw.githubusercontent.com/yourorg/seek-admin-scripts/main/create_admin.rb"
+    seek_script_raw_url: "https://raw.githubusercontent.com/abecam/prepare-seek4science/refs/heads/main/create_admin.rb"
 
     seek_admin_login: "denbi"
     seek_admin_email: "admin@example.org"
