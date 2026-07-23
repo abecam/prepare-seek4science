@@ -51,6 +51,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 import requests
 
@@ -62,7 +63,7 @@ DEFAULT_CONFIG = {
     "SOURCE_BASE_URL": "https://fairdomhub.org",
     "SOURCE_AUTH": None,
     "DEST_BASE_URL": "http://localhost:3033/",
-    "DEST_AUTH": ("name", 'password'), # or use an API token, see below
+    "DEST_AUTH": None, # ("name", 'password'), # or use an API token, see below
     # If your destination SEEK instance uses API tokens instead of basic auth:
     # DEST_HEADERS_EXTRA = {"Authorization": "Bearer <token>"}
     "DEST_HEADERS_EXTRA": {},
@@ -135,13 +136,35 @@ class SeekClient:
             headers.update(extra_headers)
         self.session.headers.update(headers)
 
+    def _normalize_url(self, path_or_url):
+        if path_or_url.startswith("http"):
+            parsed_url = urlparse(path_or_url)
+            base_parsed = urlparse(self.base_url)
+            if parsed_url.hostname in {"localhost", "127.0.0.1"} and parsed_url.netloc != base_parsed.netloc:
+                return urlunparse(
+                    (
+                        base_parsed.scheme,
+                        base_parsed.netloc,
+                        parsed_url.path,
+                        parsed_url.params,
+                        parsed_url.query,
+                        parsed_url.fragment,
+                    )
+                )
+            return path_or_url
+
+        if path_or_url.startswith("/"):
+            return f"{self.base_url}{path_or_url}"
+        return f"{self.base_url}/{path_or_url}"
+
     def get(self, path_or_url):
-        url = path_or_url if path_or_url.startswith("http") else f"{self.base_url}{path_or_url}"
+        url = self._normalize_url(path_or_url)
         resp = self.session.get(url)
         resp.raise_for_status()
         return resp.json()
 
     def get_binary(self, url, dest_path):
+        url = self._normalize_url(url)
         with self.session.get(url, stream=True) as resp:
             resp.raise_for_status()
             with open(dest_path, "wb") as f:
@@ -178,9 +201,15 @@ class SeekClient:
             resp.raise_for_status()
 
     def put(self, path_or_url, data, headers=None):
-        url = path_or_url if path_or_url.startswith("http") else f"{self.base_url}{path_or_url}"
-        response = self.session.put(url, data=data, headers=headers)
-        response.raise_for_status()
+        url = self._normalize_url(path_or_url)
+        try:
+            response = self.session.put(url, data=data, headers=headers)
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            details = ""
+            if hasattr(exc, "response") and exc.response is not None:
+                details = f" (status {exc.response.status_code}: {exc.response.text[:1000]})"
+            raise RuntimeError(f"PUT failed for {url}: {exc}{details}") from exc
         return response
 
 
