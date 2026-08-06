@@ -1,0 +1,14 @@
+# inventory.yml
+#
+# Runs the play against localhost only - i.e. the machine you invoke
+# ansible-playbook from is assumed to be the Docker host running the
+# SEEK container. ansible_connection: local skips SSH entirely and just
+# runs tasks as local subprocesses.
+
+all:
+  children:
+    seek_hosts:
+      hosts:
+        localhost:
+          ansible_connection: local
+          ansible_python_interpreter: "{{ ansible_playbook_python }}"
