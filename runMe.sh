@@ -33,8 +33,12 @@ echo "SEEK is ready"
 
 # Ansible needs to be installed first: sudo apt install ansible
 echo "Creating initial admin user"
+echo "Getting localhost inventory file"
+wget https://raw.githubusercontent.com/abecam/prepare-seek4science/main/FetchPushFromInvestigation.py
+echo "Getting ansible playbook to create initial user"
 wget https://raw.githubusercontent.com/abecam/prepare-seek4science/main/CreateInitialuser.yml
-ansible-playbook CreateInitialuser.yml
+echo "Running ansible playbook to create initial user"
+#ansible-playbook CreateInitialuser.yml
 ansible-playbook -i inventory.yml CreateInitialuser.yml \
   --ask-vault-pass \
   -e seek_admin_password='ChangeMe123!'
