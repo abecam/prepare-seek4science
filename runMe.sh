@@ -34,7 +34,7 @@ echo "SEEK is ready"
 # Ansible needs to be installed first: sudo apt install ansible
 echo "Creating initial admin user"
 echo "Getting localhost inventory file"
-wget https://raw.githubusercontent.com/abecam/prepare-seek4science/main/FetchPushFromInvestigation.py
+wget https://raw.githubusercontent.com/abecam/prepare-seek4science/main/inventory.yml
 echo "Getting ansible playbook to create initial user"
 wget https://raw.githubusercontent.com/abecam/prepare-seek4science/main/CreateInitialuser.yml
 echo "Running ansible playbook to create initial user"
