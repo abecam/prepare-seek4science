@@ -2,14 +2,18 @@
 # create_seek_admin.yml
 #
 # Fetches a `rails runner` script from a GitHub repo and executes it
-# inside a running SEEK Docker container, without writing the script to
-# disk and without ever putting the admin password on a command line or
-# in a log.
+# inside the running SEEK container, resolved dynamically through
+# `docker compose ps` rather than a hardcoded container name - this
+# works no matter what Compose ends up naming the container (project
+# prefix, custom -p name, etc.), so it doesn't depend on setting
+# `container_name` in the compose file.
 #
 # Requirements:
-#   - The target host can reach GitHub and has the `docker` CLI
-#     available for the SEEK container (this play assumes it runs on
-#     the same host as the container - adjust `delegate_to` if not).
+#   - The target host can reach GitHub and has the Docker Compose CLI
+#     available for the SEEK stack (this play assumes it runs on the
+#     same host the stack is deployed on).
+#   - `seek_compose_file` points at the docker-compose.yml for the
+#     stack you're targeting.
 #   - Store the admin password in an Ansible Vault-encrypted var; never
 #     put it in plaintext in this file or in the fetched .rb script.
 #
@@ -26,25 +30,52 @@
   gather_facts: false
 
   vars:
-    seek_container_name: "seek"
-    seek_script_raw_url: "https://raw.githubusercontent.com/abecam/prepare-seek4science/refs/heads/main/create_admin.rb"
+    # Path to the docker-compose.yml for the stack you're targeting.
+    seek_compose_file: "./docker-compose.yml"
+    # The *service* name in that compose file - not a container name.
+    seek_service_name: "seek"
+    # Switch to "docker-compose" (hyphenated) if the host only has the
+    # older standalone Compose v1 binary rather than the `docker compose`
+    # plugin.
+    seek_compose_cmd: "docker compose"
 
-    seek_admin_login: "denbi"
-    seek_admin_email: "admin@example.org"
-    seek_admin_first_name: "Admin"
+    seek_script_raw_url: "https://raw.githubusercontent.com/yourorg/seek-admin-scripts/main/create_admin.rb"
+
+    seek_admin_login: "alain"
+    seek_admin_email: "alain@example.org"
+    seek_admin_first_name: "Alain"
     seek_admin_last_name: "Example"
     # seek_admin_password: set via --ask-vault-pass / vaulted vars file, not here
 
   tasks:
-    - name: Confirm the SEEK container is running
+    - name: Resolve the running container ID for the SEEK service via Compose
       ansible.builtin.command:
-        cmd: "docker inspect -f {% raw %}'{{.State.Running}}'{% endraw %} {{ seek_container_name }}"
+        cmd: "{{ seek_compose_cmd }} -f {{ seek_compose_file }} ps -q {{ seek_service_name }}"
+      register: seek_container_id
+      changed_when: false
+
+    - name: Fail early if no container was found for that service
+      ansible.builtin.fail:
+        msg: >-
+          No running container found for service '{{ seek_service_name }}' in
+          {{ seek_compose_file }}. Confirm the stack is up
+          ({{ seek_compose_cmd }} -f {{ seek_compose_file }} ps) and that
+          seek_service_name matches the service key in the compose file
+          (not a container name).
+      when: seek_container_id.stdout | trim == ""
+
+    - name: Confirm the resolved container is actually running
+      ansible.builtin.command:
+        cmd: "docker inspect -f {% raw %}'{{.State.Running}}'{% endraw %} {{ seek_container_id.stdout | trim }}"
       register: seek_container_state
       changed_when: false
 
-    - name: Fail early if the SEEK container isn't running
+    - name: Fail early if the resolved container isn't running
       ansible.builtin.fail:
-        msg: "Container '{{ seek_container_name }}' is not running (state: {{ seek_container_state.stdout | trim }})"
+        msg: >-
+          Container {{ seek_container_id.stdout | trim }} for service
+          '{{ seek_service_name }}' is not running (state:
+          {{ seek_container_state.stdout | trim }}).
       when: seek_container_state.stdout | trim != "true"
 
     - name: Fetch create_admin.rb from GitHub
@@ -55,6 +86,8 @@
       register: seek_admin_script
 
     - name: Run the script inside the container, cleaning up secrets afterwards
+      vars:
+        seek_container_ref: "{{ seek_container_id.stdout | trim }}"
       block:
         - name: Create a secure temp file for the env vars
           ansible.builtin.tempfile:
@@ -79,7 +112,7 @@
             cmd: >-
               docker exec -i
               --env-file {{ seek_env_file.path }}
-              {{ seek_container_name }} bin/rails runner -
+              {{ seek_container_ref }} bin/rails runner -
             stdin: "{{ seek_admin_script.content }}"
           register: seek_admin_result
           changed_when: "'Created user' in seek_admin_result.stdout"

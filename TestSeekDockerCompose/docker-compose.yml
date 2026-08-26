@@ -2,6 +2,7 @@ version: '3'
 services:
   db: # Database implementation, in this case MySQL
     image: mysql:5.7
+    container_name: seek_db
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
     restart: always
     stop_grace_period: 1m30s
@@ -20,6 +21,7 @@ services:
     #build: .
 
     image: fairdom/seek:1.18
+    container_name: seek
 
     command: docker/entrypoint.sh
     restart: always
@@ -49,6 +51,7 @@ services:
       #build: .
 
       image: fairdom/seek:1.18
+      container_name: seek_workers
       command: docker/start_workers.sh
       restart: always
       environment:
@@ -74,6 +77,7 @@ services:
 
   solr:
     image: fairdom/seek-solr:8.11
+    container_name: seek_solr
     restart: always
     environment:
       SOLR_JAVA_MEM: -Xms512m -Xmx1024m
@@ -85,7 +89,7 @@ services:
       - seek
       - /opt/solr/server/solr/configsets/seek_config
     ports:
-      - "2900:2900"      
+      - "2900:2900"
 
 
 volumes:
