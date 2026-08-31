@@ -414,6 +414,8 @@ def main():
     source = SeekClient(SOURCE_BASE_URL, auth=SOURCE_AUTH)
     dest = SeekClient(DEST_BASE_URL, auth=DEST_AUTH, extra_headers=DEST_HEADERS_EXTRA)
 
+    if DRY_RUN:
+        print("DRY RUN mode - no data will be written to the destination.")
     print(f"Fetching investigation {INVESTIGATION_ID} from {SOURCE_BASE_URL} ...")
     tree = fetch_investigation_tree(source, INVESTIGATION_ID)
 
