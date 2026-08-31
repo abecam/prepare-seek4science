@@ -24,7 +24,9 @@ IMPORTANT CONTEXT / LIMITATIONS (please read before running)
    exist without an Investigation, etc. This script does NOT create
    Projects on the destination - you must already have (or create) a
    destination Project and tell the script which destination project id
-   to attach the new Investigation to (DEST_PROJECT_ID below).
+   to attach the new Investigation to (DEST_PROJECT_ID below). Note that
+   data_files/sops/models ALSO need their own explicit 'projects'
+   relationship - SEEK does not infer it from the assay link.
 
 4. Content blobs (the actual file bytes of Data files / SOPs / Models) are
    fetched from the source and re-uploaded to the destination. Large
@@ -37,7 +39,13 @@ IMPORTANT CONTEXT / LIMITATIONS (please read before running)
    don't exist on the destination, or licenses that aren't configured on
    the destination. These will need manual follow-up.
 
-6. Always test with DRY_RUN = True first, and test against a scratch/dev
+6. Both GET and POST requests retry automatically with exponential
+   backoff on transient 502/503/504 responses (mirrors what `wget`'s
+   default retry behaviour does - if fairdomhub.org is momentarily
+   overloaded or rate-limiting, a single failed request no longer kills
+   the whole run).
+
+7. Always test with DRY_RUN = True first, and test against a scratch/dev
    SEEK instance before pointing this at anything important.
 
 Usage
@@ -71,6 +79,10 @@ DEFAULT_CONFIG = {
     "DEST_PROJECT_ID": 1,
     "DRY_RUN": False,
     "DOWNLOAD_DIR": "./_seek_migration_blobs",
+
+    "REQUEST_USER_AGENT": "Wget/1.21.3 (linux-gnu)",
+    "REQUEST_DELAY_SECONDS": 0.5,
+    "REQUEST_TIMEOUT_SECONDS": 60
 }
 
 JSONAPI_HEADERS = {
@@ -115,6 +127,10 @@ DEST_PROJECT_ID = CONFIG["DEST_PROJECT_ID"]  # an existing project id on the des
 DRY_RUN = CONFIG["DRY_RUN"]  # if True, no POSTs are sent to DEST; the
                              # script just prints what it *would* do
 
+REQUEST_USER_AGENT = CONFIG["REQUEST_USER_AGENT"]
+REQUEST_DELAY_SECONDS = CONFIG["REQUEST_DELAY_SECONDS"]
+REQUEST_TIMEOUT_SECONDS = CONFIG["REQUEST_TIMEOUT_SECONDS"]
+
 DOWNLOAD_DIR = Path(CONFIG["DOWNLOAD_DIR"])
 DOWNLOAD_DIR.mkdir(exist_ok=True)
 
@@ -156,21 +172,75 @@ class SeekClient:
         if path_or_url.startswith("/"):
             return f"{self.base_url}{path_or_url}"
         return f"{self.base_url}/{path_or_url}"
-
-    def get(self, path_or_url):
+    
+    def _retry_after_seconds(self, resp, default):
+        """Respect a Retry-After header if the server sent one, else fall
+        back to the given default backoff."""
+        retry_after = resp.headers.get("Retry-After")
+        if retry_after:
+            try:
+                return max(float(retry_after), default)
+            except ValueError:
+                pass
+        return default
+    def get(self, path_or_url, max_retries=6, base_delay=2.0):
         url = self._normalize_url(path_or_url)
-        resp = self.session.get(url)
-        resp.raise_for_status()
-        return resp.json()
+        for attempt in range(1, max_retries + 1):
+            try:
+                resp = self.session.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
+            except requests.exceptions.RequestException as exc:
+                if attempt < max_retries:
+                    delay = base_delay * (2 ** (attempt - 1))
+                    print(f"  GET {url} raised {exc!r} (attempt {attempt}/{max_retries}), "
+                          f"retrying in {delay:.1f}s ...")
+                    time.sleep(delay)
+                    continue
+                raise
 
-    def get_binary(self, url, dest_path):
-        url = self._normalize_url(url)
-        with self.session.get(url, stream=True) as resp:
+            if resp.ok:
+                if REQUEST_DELAY_SECONDS:
+                    time.sleep(REQUEST_DELAY_SECONDS)
+                return resp.json()
+
+            transient = resp.status_code in (502, 503, 504)
+            if transient and attempt < max_retries:
+                delay = self._retry_after_seconds(resp, base_delay * (2 ** (attempt - 1)))
+                print(f"  GET {url} -> {resp.status_code} (attempt {attempt}/{max_retries}), "
+                      f"retrying in {delay:.1f}s ...")
+                time.sleep(delay)
+                continue
+
             resp.raise_for_status()
-            with open(dest_path, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=1 << 16):
-                    f.write(chunk)
-        return dest_path
+
+    def get_binary(self, url, dest_path, max_retries=6, base_delay=2.0):
+        url = self._normalize_url(url)
+        for attempt in range(1, max_retries + 1):
+            try:
+                with self.session.get(url, stream=True, timeout=REQUEST_TIMEOUT_SECONDS) as resp:
+                    if resp.ok:
+                        with open(dest_path, "wb") as f:
+                            for chunk in resp.iter_content(chunk_size=1 << 16):
+                                f.write(chunk)
+                        if REQUEST_DELAY_SECONDS:
+                            time.sleep(REQUEST_DELAY_SECONDS)
+                        return dest_path
+
+                    transient = resp.status_code in (502, 503, 504)
+                    if transient and attempt < max_retries:
+                        delay = self._retry_after_seconds(resp, base_delay * (2 ** (attempt - 1)))
+                        print(f"  GET {url} -> {resp.status_code} (attempt {attempt}/{max_retries}), "
+                              f"retrying in {delay:.1f}s ...")
+                        time.sleep(delay)
+                        continue
+                    resp.raise_for_status()
+            except requests.exceptions.RequestException as exc:
+                if attempt < max_retries:
+                    delay = base_delay * (2 ** (attempt - 1))
+                    print(f"  GET {url} raised {exc!r} (attempt {attempt}/{max_retries}), "
+                          f"retrying in {delay:.1f}s ...")
+                    time.sleep(delay)
+                    continue
+                raise
 
     def post(self, path, payload, max_retries=6, base_delay=1.5):
         url = f"{self.base_url}{path}"
@@ -180,16 +250,17 @@ class SeekClient:
             return {"data": {"id": f"DRYRUN-{path}", "type": payload['data']['type']}}
 
         for attempt in range(1, max_retries + 1):
-            resp = self.session.post(url, json=payload)
+            resp = self.session.post(url, json=payload, timeout=REQUEST_TIMEOUT_SECONDS)
             if resp.ok:
                 return resp.json()
 
-            transient = resp.status_code in (500, 503) and (
+            transient = resp.status_code in (500, 502, 503, 504) and (
                 "database is locked" in resp.text.lower()
                 or "busyexception" in resp.text.lower()
+                or resp.status_code in (502, 503, 504)
             )
             if transient and attempt < max_retries:
-                delay = base_delay * (2 ** (attempt - 1))
+                delay = self._retry_after_seconds(resp, base_delay * (2 ** (attempt - 1)))
                 print(
                     f"  POST {url} hit a transient DB lock (attempt {attempt}/{max_retries}), "
                     f"retrying in {delay:.1f}s ..."
