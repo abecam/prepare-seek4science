@@ -45,5 +45,4 @@ ansible-playbook -i inventory.yml CreateInitialuser.yml \
 
 echo "Fetching and pushing data from investigation"
 wget https://raw.githubusercontent.com/abecam/prepare-seek4science/main/FetchPushFromInvestigation.py
-wget https://raw.githubusercontent.com/abecam/prepare-seek4science/main/config.json
 python3 FetchPushFromInvestigation.py
