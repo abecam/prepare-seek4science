@@ -77,6 +77,7 @@ DEFAULT_CONFIG = {
     "DEST_HEADERS_EXTRA": {},
     "INVESTIGATION_ID": 658,
     "DEST_PROJECT_ID": 1,
+    "DEST_POLICY_ACCESS": "download",   # no_access | view | download | edit | manage
     "DRY_RUN": False,
     "DOWNLOAD_DIR": "./_seek_migration_blobs",
 
@@ -123,6 +124,7 @@ DEST_HEADERS_EXTRA = CONFIG["DEST_HEADERS_EXTRA"]
 INVESTIGATION_ID = CONFIG["INVESTIGATION_ID"]  # the investigation to migrate
 DEST_PROJECT_ID = CONFIG["DEST_PROJECT_ID"]  # an existing project id on the destination
                                               # that the new investigation will belong to
+DEST_POLICY_ACCESS = CONFIG["DEST_POLICY_ACCESS"]
 
 DRY_RUN = CONFIG["DRY_RUN"]  # if True, no POSTs are sent to DEST; the
                              # script just prints what it *would* do
@@ -148,6 +150,7 @@ class SeekClient:
         if auth:
             self.session.auth = auth
         headers = dict(JSONAPI_HEADERS)
+        headers["User-Agent"] = REQUEST_USER_AGENT
         if extra_headers:
             headers.update(extra_headers)
         self.session.headers.update(headers)
@@ -376,6 +379,7 @@ def create_investigation(dest, investigation, project_id):
             "attributes": {
                 "title": attrs.get("title"),
                 "description": attrs.get("description"),
+                "policy": {"access": DEST_POLICY_ACCESS},
             },
             "relationships": {
                 "projects": {"data": [{"id": str(project_id), "type": "projects"}]}
@@ -394,6 +398,7 @@ def create_study(dest, study, dest_investigation_id):
             "attributes": {
                 "title": attrs.get("title"),
                 "description": attrs.get("description"),
+                "policy": {"access": DEST_POLICY_ACCESS},
             },
             "relationships": {
                 "investigation": {"data": {"id": str(dest_investigation_id), "type": "investigations"}}
@@ -414,6 +419,7 @@ def create_assay(dest, assay, dest_study_id):
                 "description": attrs.get("description"),
                 "assay_class": attrs.get("assay_class"),
                 "assay_type": attrs.get("assay_type"),
+                "policy": {"access": DEST_POLICY_ACCESS},
             },
             "relationships": {
                 "study": {"data": {"id": str(dest_study_id), "type": "studies"}}
