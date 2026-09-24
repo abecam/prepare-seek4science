@@ -33,11 +33,15 @@ echo "SEEK is ready"
 
 # Ansible needs to be installed first: sudo apt install ansible
 echo "Creating initial admin user"
-echo "Getting localhost inventory file"
-wget https://raw.githubusercontent.com/abecam/prepare-seek4science/main/inventory.yml
-echo "Getting ansible playbook to create initial user"
-wget https://raw.githubusercontent.com/abecam/prepare-seek4science/main/CreateInitialuser.yml
-echo "Running ansible playbook to create initial user"
+docker compose exec seek bundle exec rake db:seed:example_data
+
+# Following is the tentative do create the initial user using ansible.
+# It might be interesting to use ansible depending on how the webservices are set up, but for now, we will use the rake command above to create the initial user.
+#echo "Getting localhost inventory file"
+#wget https://raw.githubusercontent.com/abecam/prepare-seek4science/main/inventory.yml
+#echo "Getting ansible playbook to create initial user"
+#wget https://raw.githubusercontent.com/abecam/prepare-seek4science/main/CreateInitialuser.yml
+#echo "Running ansible playbook to create initial user"
 #ansible-playbook CreateInitialuser.yml
 ansible-playbook -i inventory.yml CreateInitialuser.yml \
   --ask-vault-pass \
