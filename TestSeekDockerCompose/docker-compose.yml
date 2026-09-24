@@ -1,4 +1,3 @@
-version: '3'
 services:
   db: # Database implementation, in this case MySQL
     image: mysql:5.7
@@ -35,11 +34,15 @@ services:
       MYSQL_DATABASE: seek_docker
       MYSQL_USER: seek_db_user
       MYSQL_PASSWORD: seek_db_password
+      # RAILS_RELATIVE_URL_ROOT: /stillcondor_100
+      # Using the SimpleVM  Webservices, the relative root need to be set to the random subpath given by the SimpleVM setup
     volumes:
       - seek-filestore:/seek/filestore
       - seek-cache:/seek/tmp/cache
     ports:
       - "3053:3000"
+      # - "3838:3000"
+      # Using the SimpleVM  Webservices, we need to use the given port, currently 3838
     depends_on:
       - db
       - solr
