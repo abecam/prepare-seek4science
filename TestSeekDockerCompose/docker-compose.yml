@@ -40,8 +40,7 @@ services:
       - seek-filestore:/seek/filestore
       - seek-cache:/seek/tmp/cache
     ports:
-      - "3053:3000"
-      # - "3838:3000"
+      - "3838:3000"
       # Using the SimpleVM  Webservices, we need to use the given port, currently 3838
     depends_on:
       - db
