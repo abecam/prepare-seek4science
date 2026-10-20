@@ -70,8 +70,8 @@ import requests
 DEFAULT_CONFIG = {
     "SOURCE_BASE_URL": "https://fairdomhub.org",
     "SOURCE_AUTH": None,
-    "DEST_BASE_URL": "http://localhost:3033/",
-    "DEST_AUTH": None, # ("name", 'password'), # or use an API token, see below
+    "DEST_BASE_URL": "http://localhost:3838/",
+    "DEST_AUTH": ("admin", 'adminadmin') # ("name", 'password'), # or use an API token, see below
     # If your destination SEEK instance uses API tokens instead of basic auth:
     # DEST_HEADERS_EXTRA = {"Authorization": "Bearer <token>"}
     "DEST_HEADERS_EXTRA": {},
