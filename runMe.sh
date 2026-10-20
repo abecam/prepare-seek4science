@@ -43,9 +43,9 @@ docker compose exec seek bundle exec rake db:seed:example_data
 #wget https://raw.githubusercontent.com/abecam/prepare-seek4science/main/CreateInitialuser.yml
 #echo "Running ansible playbook to create initial user"
 #ansible-playbook CreateInitialuser.yml
-ansible-playbook -i inventory.yml CreateInitialuser.yml \
-  --ask-vault-pass \
-  -e seek_admin_password='ChangeMe123!'
+#ansible-playbook -i inventory.yml CreateInitialuser.yml \
+#  --ask-vault-pass \
+#  -e seek_admin_password='ChangeMe123!'
 
 echo "Fetching and pushing data from investigation"
 wget https://raw.githubusercontent.com/abecam/prepare-seek4science/main/FetchPushFromInvestigation.py
