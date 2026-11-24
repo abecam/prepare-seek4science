@@ -45,7 +45,11 @@ IMPORTANT CONTEXT / LIMITATIONS (please read before running)
    overloaded or rate-limiting, a single failed request no longer kills
    the whole run).
 
-7. Always test with DRY_RUN = True first, and test against a scratch/dev
+7. If a docker-compose.yml sits next to this script and sets
+   RAILS_RELATIVE_URL_ROOT (e.g. SimpleVM's random subpath), that subpath is
+   appended to DEST_BASE_URL automatically.
+
+8. Always test with DRY_RUN = True first, and test against a scratch/dev
    SEEK instance before pointing this at anything important.
 
 Usage
@@ -56,6 +60,7 @@ Usage
 
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -112,12 +117,66 @@ def load_config():
     return config
 
 
+def read_relative_url_root(compose_path=None):
+    """Read RAILS_RELATIVE_URL_ROOT from the docker-compose.yml that lives in
+    the same directory as this script.
+
+    Returns the root normalised to the form "/subpath" (leading slash, no
+    trailing slash), or "" if the file is missing or the variable is not set
+    (e.g. it is still commented out). Uses PyYAML when installed, otherwise a
+    simple line-based fallback that ignores commented-out lines.
+    """
+    compose_path = Path(compose_path) if compose_path else Path(__file__).with_name("docker-compose.yml")
+    if not compose_path.exists():
+        print(f"No {compose_path.name} found next to the script - no relative URL root applied.")
+        return ""
+
+    text = compose_path.read_text(encoding="utf-8")
+    key = "RAILS_RELATIVE_URL_ROOT"
+    value = None
+
+    try:
+        import yaml  # optional dependency
+
+        compose = yaml.safe_load(text) or {}
+        for service in (compose.get("services") or {}).values():
+            env = (service or {}).get("environment")
+            if isinstance(env, dict) and env.get(key):
+                value = str(env[key])
+            elif isinstance(env, list):
+                for entry in env:
+                    if isinstance(entry, str) and entry.startswith(f"{key}="):
+                        value = entry.split("=", 1)[1]
+            if value:
+                break
+    except ImportError:
+        match = re.search(rf"^\s*-?\s*{key}\s*[:=]\s*[\"']?([^\"'#\s]+)", text, re.MULTILINE)
+        if match:
+            value = match.group(1)
+
+    root = "/" + value.strip().strip("/") if value and value.strip().strip("/") else ""
+    if root:
+        print(f"RAILS_RELATIVE_URL_ROOT from {compose_path.name}: {root}")
+    else:
+        print(f"RAILS_RELATIVE_URL_ROOT is not set in {compose_path.name} - using the base URL as is.")
+    return root
+
+
+def apply_relative_root(base_url, root):
+    """Append the relative URL root to base_url unless it is already there."""
+    base_url = base_url.rstrip("/")
+    if root and not urlparse(base_url).path.rstrip("/").endswith(root):
+        base_url += root
+    return base_url
+
+
 CONFIG = load_config()
 SOURCE_BASE_URL = CONFIG["SOURCE_BASE_URL"]
 SOURCE_AUTH = CONFIG["SOURCE_AUTH"]  # e.g. ("username", "password") if the investigation is
                                      # private; leave as None for public resources
 
-DEST_BASE_URL = CONFIG["DEST_BASE_URL"]
+RELATIVE_URL_ROOT = read_relative_url_root()  # subpath of the local SEEK, from docker-compose.yml
+DEST_BASE_URL = apply_relative_root(CONFIG["DEST_BASE_URL"], RELATIVE_URL_ROOT)
 DEST_AUTH = CONFIG["DEST_AUTH"]  
 DEST_HEADERS_EXTRA = CONFIG["DEST_HEADERS_EXTRA"]
 
