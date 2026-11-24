@@ -8,6 +8,25 @@ docker volume create --name=seek-cache
 echo "Downloading docker-compose.yml and db.env"
 #wget https://raw.githubusercontent.com/seek4science/seek/seek-1.18/docker-compose.yml
 wget https://raw.githubusercontent.com/abecam/prepare-seek4science/main/TestSeekDockerCompose/docker-compose.yml
+
+# Set RAILS_RELATIVE_URL_ROOT (random subpath given by the SimpleVM setup) in the compose file
+# Update the value
+sudo /etc/simplevm/get_metadata.sh
+
+LOCATION_URL="$(jq -r '.location_url // empty' /etc/simplevm/metadata.json 2>/dev/null)"
+LOCATION_URL="${LOCATION_URL#/}"   # tolerate a leading slash
+if [ -n "$LOCATION_URL" ]; then
+  echo "Setting RAILS_RELATIVE_URL_ROOT to /${LOCATION_URL}"
+  if grep -qE '^[[:space:]]*#?[[:space:]]*RAILS_RELATIVE_URL_ROOT:' docker-compose.yml; then
+    # Line already present (commented or not): uncomment it and set the value
+    sed -i -E "s|^([[:space:]]*)#?[[:space:]]*RAILS_RELATIVE_URL_ROOT:.*|\1RAILS_RELATIVE_URL_ROOT: /${LOCATION_URL}|" docker-compose.yml
+  else
+    # Line absent: add it to the environment of the "seek" service (not the workers)
+    sed -i -E "/^  seek:/,/^  seek_workers:/ s|^([[:space:]]+)RAILS_ENV: production|&\n\1RAILS_RELATIVE_URL_ROOT: /${LOCATION_URL}|" docker-compose.yml
+  fi
+else
+  echo "Warning: no location_url in /etc/simplevm/metadata.json, RAILS_RELATIVE_URL_ROOT not set" >&2
+fi
 mkdir docker
 cd docker
 wget https://raw.githubusercontent.com/seek4science/seek/seek-1.18/docker/db.env
