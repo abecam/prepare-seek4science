@@ -6,7 +6,7 @@ Set of scripts to:
   
 To run it:
 ```
-wget https://thebuoy.eu/sh/P3x/ (shortened)
+wget https://thebuoy.eu/sh/P3x (shortened)
 mv P3x runMe.sh
 chmod +x runMe.sh
 ./runMe.sh
